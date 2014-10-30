@@ -1,13 +1,15 @@
-var Browser = require('zombie');
-var assert = require('assert');
-var cheerio = require('cheerio');
-var async = require('async');
+var Browser = require('zombie'),
+    assert = require('assert'),
+    cheerio = require('cheerio'),
+    async = require('async');
 
 var options = {
     waitDuration: '15s',
     loadCSS: false,
     maxRedirects: 30
 };
+
+var waitTime = 10000;
 
 // Wait until footer is loaded
 function footerLoaded(window) {
@@ -33,7 +35,7 @@ function login(username, password, callback) {
 
 function rentals(browser, callback) {
     browser.clickLink('Rentals', function(error) {
-        browser.wait(footerLoaded, function() {
+        browser.wait(waitTime, function() {
             callback(browser);
         });
     });
@@ -43,7 +45,7 @@ function rentalPage(browser, page, callback) {
     var hreflocation = 'https://www.capitalbikeshare.com/member/rentals/' + String(parseInt(page));
     console.log('page', hreflocation);
     browser.location.href = hreflocation;
-    browser.wait(footerLoaded, function() {
+    browser.wait(waitTime, function() {
         console.log('calling back browser, loaded: ', browser.location.href);
         callback(browser);
     });
@@ -72,6 +74,27 @@ function extractRentals(browser, callback) {
             //console.log('rowobj', rowobj);
             data.push(rowobj);
         }
+    }
+}
+
+function compileRentals(rentaldata, allrentals, callback) {
+    async.concatSeries([allrentals,rentaldata],function(item,cb){
+        cb(null,item);
+    },function(err,results){
+        callback(results);
+    }]);
+}
+
+function reduceRentals(allrentals, requestedsize, callback) {
+    if (allrentals.length == requestedsize) {
+        callback(allrentals);
+    } else {
+        async.whilst(function(){ return allrentals.length > requestedsize }, function(cb){
+            allrentals.pop()
+        },function(err){
+            if (err) console.log('err',err);
+            callback(allrentals);
+        });
     }
 }
 
@@ -112,7 +135,8 @@ exports.getTotalRentals = function(username, password, callback) {
 };
 
 exports.getAllRentals = function(username, password, callback) {
-    var compiledrentals = [];
+    var allrentals = [];
+    
     login(username, password, function(loginbrowser) {
         rentals(loginbrowser, function(browser) {
             var rentalNumStart = browser.text('h1').indexOf('(');
@@ -123,44 +147,147 @@ exports.getAllRentals = function(username, password, callback) {
             console.log('rental pages:', rentalPages);
 
             extractRentals(browser, function(rentaldata) {
-                compiledrentals = rentaldata;
-                var j = 1;
-                async.until(function() {
-                        if (j === rentalPages) return true;
-                    }, function(cb) {
+                compileRentals(rentaldata, allrentals, function(){
+                    var j = 1;
+                    async.whilst(function(){ return j === (rentalPages-1); },function(cb) {
                         console.log('page :', j, ' out of ', rentalPages);
                         rentalPage(browser, j * 20, function(pagebrowser) {
                             browser = pagebrowser;
-                            extractRentals(browser, function(newrentaldata) {
-                                compiledrentals = compiledrentals.concat(newrentaldata);
-                                console.log('compiled rental length:', compiledrentals.length);
-                                j++;
-                                cb();
+                            extractRentals(pagebrowser, function(newrentaldata) {
+                                compileRentals(newrentaldata,allrentals, function(){
+                                    console.log('compiled rental length:', allrentals.length);
+                                    j++;
+                                    cb();
+                                });
                             });
                         });
                     },
-                    function() {
-                        callback(compiledrentals);
+                    function(err) {
+                        if (err) console.log('err',err);
+                        callback(allrentals);
                     });
+                });
             });
-            /*
-                        extractRentals(browser, function(rentaldata) {
-                            compiledrentals.concat(rentaldata);
-                            for (var j = 1; j <= rentalPages; j++) {
-                                if (j === rentalPages) {
-                                    callback(compiledrentals);
-                                } else {
-                                    console.log('page: ', j * 20);
-                                    rentalPage(browser, j * 20, function(pagebrowser) {
-                                        browser = pagebrowser;
-                                        extractRentals(browser, function(newrentaldata) {
-                                            compiledrentals.concat(newrentaldata);
+        });
+    });
+};
+
+exports.getRentalsSinceTotal = function(username, password, previoustotal, callback) {
+    var allrentals = [];
+    login(username, password, function(loginbrowser) {
+        rentals(loginbrowser, function(browser) {
+            var rentalNumStart = browser.text('h1').indexOf('(');
+            var rentalNumLength = browser.text('h1').indexOf(')');
+            var rentalNum = parseInt(browser.text('h1').substring(rentalNumStart + 1, rentalNumLength));
+            
+            if (previoustotal >= rentalNum) {
+                console.log('previous >= existing');
+                callback(null);
+            } else {
+                var rentalSize = rentalNum - previoustotal;
+                var rentalPages = Math.ceil(rentalSize / 20.0);
+                console.log('rental pages:', rentalPages);
+
+                extractRentals(browser, function(rentaldata) {
+                    compileRentals(rentaldata, allrentals, function(){
+                        if (rentalPages === 1) {
+                            reducerentals(allrentals,rentalSize,callback);
+                        } else {
+                            var j = 1;
+                            async.whilst(function(){ return j === (rentalPages-1); },function(cb) {
+                                console.log('page :', j, ' out of ', rentalPages);
+                                rentalPage(browser, j * 20, function(pagebrowser) {
+                                    browser = pagebrowser;
+                                    extractRentals(pagebrowser, function(newrentaldata) {
+                                        compileRentals(newrentaldata, allrentals, function(){
+                                            console.log('compiled rental length:', allrentals.length);
+                                            j++;
+                                            cb();
                                         });
                                     });
-                                }
-                            }
-                        });
-            */
+                                });
+                            },
+                            function(err) {
+                                if (err) console.log('err',err);
+                                reducerentals(allrentals,rentalSize,callback);
+                            });
+                        }
+                    });
+                });
+            }
         });
+    });
+};
+
+var getLastXRentals = function(username, password, numberofrentals, callback) {
+    var allrentals = [];
+    login(username, password, function(loginbrowser) {
+        rentals(loginbrowser, function(browser) {
+            var rentalNumStart = browser.text('h1').indexOf('(');
+            var rentalNumLength = browser.text('h1').indexOf(')');
+            var rentalNum = parseInt(browser.text('h1').substring(rentalNumStart + 1, rentalNumLength));
+            
+            if (numberofrentals >= rentalNum) {
+                console.log('requesting more rentals than available');
+                callback(null);
+            } else {
+                var rentalSize = numberofrentals;
+                var rentalPages = Math.ceil(rentalSize / 20.0);
+                console.log('rental pages:', rentalPages);
+
+                extractRentals(browser, function(rentaldata) {
+                    compileRentals(rentaldata, allrentals, function(){
+                        if (rentalPages === 1) {
+                            reducerentals(allrentals,rentalSize,callback);
+                        } else {
+                            var j = 1;
+                            async.whilst(function(){ return j === (rentalPages-1); },function(cb) {
+                                console.log('page :', j, ' out of ', rentalPages);
+                                rentalPage(browser, j * 20, function(pagebrowser) {
+                                    browser = pagebrowser;
+                                    extractRentals(pagebrowser, function(newrentaldata) {
+                                        compileRentals(newrentaldata, allrentals, function(){
+                                            console.log('compiled rental length:', allrentals.length);
+                                            j++;
+                                            cb();
+                                        });
+                                    });
+                                });
+                            },
+                            function(err) {
+                                if (err) console.log('err',err);
+                                reducerentals(allrentals,rentalSize,callback);
+                            });
+                        }
+                    });
+                });
+            }
+        });
+    });
+}
+
+exports.getLastXRentals = function(username, password, numberofrentals, callback) {
+    getLastXRentals(username, password, numberofrentals, callback);
+};
+
+exports.getRentalStats = function(data,callback) {
+    var count = 0;
+    var statdata = {
+        numberofrentals: data.length,
+        Distance: 0,
+        CO2_Offset: 0,
+        Cost: 0,
+        Calories: 0
+    };
+    async.whilst(function(){ return count < data.length; },function(cb) {
+        statdata.Distance += data[count].Distance;
+        statdata.CO2_Offset += data[count].CO2_Offset;
+        statdata.Cost += data[count].Cost;
+        statdata.Calories += data[count].Calories;
+        count++;
+        cb();
+    },function(err){
+        if (err) console.log('err',err);
+        callback(statdata);
     });
 };
