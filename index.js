@@ -123,21 +123,22 @@ exports.getAllRentals = function(username, password, callback) {
             console.log('rental pages:',rentalPages);
 
             var j = 1;
-            async.until(function(cb) {
+            async.until(function() {
                     if (j === rentalPages) return true;
-                }, function() {
+                }, function(cb) {
                     console.log('page :', j,' out of ',rentalPages);
                     rentalPage(browser, j * 20, function(pagebrowser) {
                         browser = pagebrowser;
                         extractRentals(browser, function(newrentaldata) {
                             compiledrentals.concat(newrentaldata);
+                            console.log('compiled rental length:',compiledrentals.length);
                             j++;
                             cb();
                         });
                     });
                 },
                 function() {
-                    callback(compiledresults);
+                    callback(compiledrentals);
                 });
             /*
                         extractRentals(browser, function(rentaldata) {
