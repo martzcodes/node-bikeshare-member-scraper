@@ -132,7 +132,7 @@ exports.getAllRentals = function(username, password, callback) {
                         rentalPage(browser, j * 20, function(pagebrowser) {
                             browser = pagebrowser;
                             extractRentals(browser, function(newrentaldata) {
-                                compiledrentals.concat(newrentaldata);
+                                compiledrentals = compiledrentals.concat(newrentaldata);
                                 console.log('compiled rental length:', compiledrentals.length);
                                 j++;
                                 cb();
