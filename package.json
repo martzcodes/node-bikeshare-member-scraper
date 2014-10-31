@@ -1,6 +1,6 @@
 {
   "name": "node-bikeshare-member-scraper",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "retrieves member data from bikeshare profiles",
   "main": "index.js",
   "scripts": {
