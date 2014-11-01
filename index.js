@@ -37,10 +37,10 @@ function login(username, password, callback) {
 }
 
 function rentals(browser, callback) {
-    browser.clickLink('Rentals', function(error) {
-        browser.wait(footerLoaded, function() {
-            callback(browser);
-        });
+    var hreflocation = 'https://www.capitalbikeshare.com/member/rentals/';
+    browser.location.href = hreflocation;
+    browser.wait(footerLoaded, function() {
+        callback(browser);
     });
 }
 
