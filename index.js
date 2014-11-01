@@ -102,7 +102,17 @@ function reduceRentals(allrentals, requestedsize, callback) {
     }
 }
 
-function getXRentals(browser, rentalSize, callback) {
+function numberRentals(rentals,rentalSize,callback) {
+    for (var j = 0; j <= rentals.length; j++) {
+        if (j === rentals.length) {
+            callback(rentals);
+        } else {
+            rentals[j].rentalnum = rentalSize - j;
+        }
+    }
+}
+
+function getXRentals(browser, totalrentals, rentalSize, callback) {
     var rentalPages = Math.ceil(rentalSize / 20.0);
     console.log('rental pages:', rentalPages);
 
@@ -124,9 +134,11 @@ function getXRentals(browser, rentalSize, callback) {
     }, function(err, results) {
         if (err) console.log('err', err);
         console.log('results length', results.length);
-        reduceRentals(results, rentalSize, function(data){
-            browser.close();
-            callback(data);
+        browser.close();
+        numberRentals(results,totalrentals,function(numbered){
+            reduceRentals(numbered, rentalSize, function(data){
+                callback(data);
+            });
         });
     });
 }
@@ -176,7 +188,7 @@ exports.getAllRentals = function(username, password, callback) {
             var rentalNumLength = browser.text('h1').indexOf(')');
             var rentalSize = parseInt(browser.text('h1').substring(rentalNumStart + 1, rentalNumLength));
 
-            getXRentals(browser, rentalSize, callback);
+            getXRentals(browser, rentalSize, rentalSize, callback);
         });
     });
 };
@@ -194,7 +206,7 @@ exports.getRentalsSinceTotal = function(username, password, previoustotal, callb
             } else {
                 var rentalSize = rentalNum - previoustotal;
 
-                getXRentals(browser, rentalSize, callback);
+                getXRentals(browser, rentalNum, rentalSize, callback);
             }
         });
     });
@@ -213,7 +225,7 @@ var getLastXRentals = function(username, password, numberofrentals, callback) {
                 callback(null);
             } else {
                 var rentalSize = numberofrentals;
-                getXRentals(browser, rentalSize, callback);
+                getXRentals(browser, rentalNum, rentalSize, callback);
             }
         });
     });

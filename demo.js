@@ -29,10 +29,11 @@ bs.getRentalsSinceTotal(config.username, config.password, previousrentalnum, fun
 */
 
 bs.getLastXRentals(config.username, config.password, 15, function(data){
-	console.log('rentals since length:',data.length,'...should be 15');
+	console.log('rentals:',data);
 	//data.length should be 15
-	
+	/*
 	bs.getRentalStats(data,function(statdata) {
 		console.log('stats: ',statdata);
 	});
+*/
 });
